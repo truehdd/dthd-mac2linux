@@ -1,6 +1,6 @@
 [package]
 name = "dthd-mac2linux"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.97"
 description = "Build dee_dthd_encoder for Linux from its macOS x86-64 payload"

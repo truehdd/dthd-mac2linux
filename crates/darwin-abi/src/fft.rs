@@ -1,5 +1,8 @@
 //! Real FFT adapters with vDSP scaling.
 
+#[cfg(target_arch = "x86_64")]
+mod kernels;
+
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
@@ -130,7 +133,7 @@ pub struct Setup {
     logn: usize,
     cosine: Vec<f64>,
     sine: Vec<f64>,
-    reversal: [OnceLock<Vec<usize>>; 25],
+    reversal: [OnceLock<Vec<u32>>; 25],
 }
 
 impl Setup {
@@ -165,16 +168,23 @@ impl Setup {
         }
     }
 
-    fn reversal(&self, lg: usize) -> &[usize] {
+    fn reversal(&self, lg: usize) -> &[u32] {
         self.reversal[lg].get_or_init(|| {
-            (0..1usize << lg)
-                .map(|v| v.reverse_bits() >> (usize::BITS as usize - lg))
+            (0..1u32 << lg)
+                .map(|v| v.reverse_bits() >> (u32::BITS as usize - lg))
                 .collect()
         })
     }
 
     #[inline(always)]
-    fn complex(&self, re: &mut [f64], im: &mut [f64], lg: usize, direction: i32) {
+    fn complex<const ISA: u8>(
+        &self,
+        re: &mut [f64],
+        im: &mut [f64],
+        scratch: &mut [f64],
+        lg: usize,
+        direction: i32,
+    ) {
         let n = re.len();
         if n < 2 {
             return;
@@ -193,53 +203,86 @@ impl Setup {
 
         let rev = self.reversal(lg);
         let sign = if direction > 0 { -1.0 } else { 1.0 };
-        SCRATCH.with_borrow_mut(|scratch| {
-            scratch.resize(2 * n, 0.0);
-            let (gr, gi) = scratch.split_at_mut(n);
-            let c0 = self.cosine[1];
-            let s0 = sign * self.sine[1];
-            let c1 = self.cosine[2];
-            let s1 = sign * self.sine[2];
+        let (gr, gi) = scratch.split_at_mut(n);
+        let c0 = self.cosine[1];
+        let s0 = sign * self.sine[1];
+        let c1 = self.cosine[2];
+        let s1 = sign * self.sine[2];
 
-            for i in (0..n).step_by(4) {
-                let x0r = re[rev[i]];
-                let x0i = im[rev[i]];
-                let x1r = re[rev[i + 1]];
-                let x1i = im[rev[i + 1]];
-                let x2r = re[rev[i + 2]];
-                let x2i = im[rev[i + 2]];
-                let x3r = re[rev[i + 3]];
-                let x3i = im[rev[i + 3]];
+        #[cfg(target_arch = "x86_64")]
+        let start = if ISA == 2 {
+            // Setup constructs reversal indices below n (and below 2^24).
+            unsafe { kernels::gather_avx512((re, im), (gr, gi), rev, [c0, s0, c1, s1]) }
+        } else {
+            0
+        };
+        #[cfg(not(target_arch = "x86_64"))]
+        let start = 0;
 
-                let a0r = x0r + x1r;
-                let a0i = x0i + x1i;
-                let a1r = x0r - x1r;
-                let a1i = x0i - x1i;
-                let b0r = x2r + x3r;
-                let b0i = x2i + x3i;
-                let b1r = x2r - x3r;
-                let b1i = x2i - x3i;
+        for i in (start..n).step_by(4) {
+            let x0r = re[rev[i] as usize];
+            let x0i = im[rev[i] as usize];
+            let x1r = re[rev[i + 1] as usize];
+            let x1i = im[rev[i + 1] as usize];
+            let x2r = re[rev[i + 2] as usize];
+            let x2i = im[rev[i + 2] as usize];
+            let x3r = re[rev[i + 3] as usize];
+            let x3i = im[rev[i + 3] as usize];
 
-                let t0r = c0 * b0r - s0 * b0i;
-                let t0i = c0 * b0i + s0 * b0r;
-                let t1r = c1 * b1r - s1 * b1i;
-                let t1i = c1 * b1i + s1 * b1r;
+            let a0r = x0r + x1r;
+            let a0i = x0i + x1i;
+            let a1r = x0r - x1r;
+            let a1i = x0i - x1i;
+            let b0r = x2r + x3r;
+            let b0i = x2i + x3i;
+            let b1r = x2r - x3r;
+            let b1i = x2i - x3i;
 
-                gr[i] = a0r + t0r;
-                gi[i] = a0i + t0i;
-                gr[i + 1] = a1r + t1r;
-                gi[i + 1] = a1i + t1i;
-                gr[i + 2] = a0r - t0r;
-                gi[i + 2] = a0i - t0i;
-                gr[i + 3] = a1r - t1r;
-                gi[i + 3] = a1i - t1i;
-            }
+            let t0r = c0 * b0r - s0 * b0i;
+            let t0i = c0 * b0i + s0 * b0r;
+            let t1r = c1 * b1r - s1 * b1i;
+            let t1i = c1 * b1i + s1 * b1r;
 
-            re.copy_from_slice(gr);
-            im.copy_from_slice(gi);
-        });
+            gr[i] = a0r + t0r;
+            gi[i] = a0i + t0i;
+            gr[i + 1] = a1r + t1r;
+            gi[i + 1] = a1i + t1i;
+            gr[i + 2] = a0r - t0r;
+            gi[i + 2] = a0i - t0i;
+            gr[i + 3] = a1r - t1r;
+            gi[i + 3] = a1i - t1i;
+        }
 
         let mut half = 4;
+        #[cfg(target_arch = "x86_64")]
+        {
+            let mut source = Some((&*gr, &*gi));
+            while 4 * half <= n {
+                // ISA is fixed by real_with_scratch after runtime feature detection.
+                unsafe {
+                    if ISA == 2 && half >= 8 {
+                        kernels::pair_avx512(self, re, im, source, half, sign);
+                    } else if ISA >= 1 {
+                        kernels::pair_avx2(self, re, im, source, half, sign);
+                    } else {
+                        kernels::pair_sse2(self, re, im, source, half, sign);
+                    }
+                }
+                source = None;
+                half *= 4;
+            }
+            if source.is_some() {
+                re.copy_from_slice(gr);
+                im.copy_from_slice(gi);
+            }
+        }
+
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            re.copy_from_slice(gr);
+            im.copy_from_slice(gi);
+        }
+
         while half < n {
             let cs = &self.cosine[half - 1..half * 2 - 1];
             let sn = &self.sine[half - 1..half * 2 - 1];
@@ -265,7 +308,14 @@ impl Setup {
     }
 
     #[inline(always)]
-    fn real_kernel(&self, r: &mut [f64], im: &mut [f64], lg: usize, direction: i32) {
+    fn real_kernel<const ISA: u8>(
+        &self,
+        r: &mut [f64],
+        im: &mut [f64],
+        scratch: &mut [f64],
+        lg: usize,
+        direction: i32,
+    ) {
         assert!(lg >= 1 && lg <= self.logn && (direction == 1 || direction == -1));
         let n = 1usize << (lg - 1);
         assert_eq!(r.len(), n);
@@ -274,7 +324,7 @@ impl Setup {
         let c = &self.cosine[n - 1..];
         let sn = &self.sine[n - 1..];
         if direction == 1 {
-            self.complex(r, im, lg - 1, 1);
+            self.complex::<ISA>(r, im, scratch, lg - 1, 1);
         }
 
         let r0 = r[0];
@@ -283,7 +333,18 @@ impl Setup {
         r[0] = scale * (r0 + i0);
         im[0] = scale * (r0 - i0);
 
-        for k in 1..=n / 2 {
+        #[cfg(target_arch = "x86_64")]
+        let start = unsafe {
+            match ISA {
+                2 => kernels::split_avx512(self, r, im, direction),
+                1 => kernels::split_avx2(self, r, im, direction),
+                _ => kernels::split_sse2(self, r, im, direction),
+            }
+        };
+        #[cfg(not(target_arch = "x86_64"))]
+        let start = 1;
+
+        for k in start..=n / 2 {
             let m = n - k;
             let ar = r[k] + r[m];
             let ai = im[k] - im[m];
@@ -309,24 +370,38 @@ impl Setup {
         }
 
         if direction != 1 {
-            self.complex(r, im, lg - 1, -1);
+            self.complex::<ISA>(r, im, scratch, lg - 1, -1);
         }
     }
 }
 
 impl Setup {
     pub fn real(&self, re: &mut [f64], im: &mut [f64], lg: usize, direction: i32) {
+        SCRATCH.with_borrow_mut(|scratch| {
+            scratch.resize(2 * re.len(), 0.0);
+            self.real_with_scratch(re, im, scratch, lg, direction);
+        });
+    }
+
+    fn real_with_scratch(
+        &self,
+        re: &mut [f64],
+        im: &mut [f64],
+        scratch: &mut [f64],
+        lg: usize,
+        direction: i32,
+    ) {
         #[cfg(target_arch = "x86_64")]
         unsafe {
             match selected_isa() {
-                2 => real_avx512(self, re, im, lg, direction),
-                1 => real_avx2(self, re, im, lg, direction),
-                _ => self.real_kernel(re, im, lg, direction),
+                2 => real_avx512(self, re, im, scratch, lg, direction),
+                1 => real_avx2(self, re, im, scratch, lg, direction),
+                _ => self.real_kernel::<0>(re, im, scratch, lg, direction),
             }
         }
 
         #[cfg(not(target_arch = "x86_64"))]
-        self.real_kernel(re, im, lg, direction);
+        self.real_kernel::<0>(re, im, scratch, lg, direction);
     }
 }
 
@@ -354,14 +429,28 @@ fn selected_isa() -> u8 {
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn real_avx2(s: &Setup, r: &mut [f64], i: &mut [f64], lg: usize, d: i32) {
-    s.real_kernel(r, i, lg, d);
+unsafe fn real_avx2(
+    s: &Setup,
+    r: &mut [f64],
+    i: &mut [f64],
+    scratch: &mut [f64],
+    lg: usize,
+    d: i32,
+) {
+    s.real_kernel::<1>(r, i, scratch, lg, d);
 }
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
-unsafe fn real_avx512(s: &Setup, r: &mut [f64], i: &mut [f64], lg: usize, d: i32) {
-    s.real_kernel(r, i, lg, d);
+unsafe fn real_avx512(
+    s: &Setup,
+    r: &mut [f64],
+    i: &mut [f64],
+    scratch: &mut [f64],
+    lg: usize,
+    d: i32,
+) {
+    s.real_kernel::<2>(r, i, scratch, lg, d);
 }
 
 thread_local! {
@@ -520,6 +609,20 @@ pub unsafe extern "C" fn vspdp(a: *const f32, sa: isize, b: *mut f64, sb: isize,
 mod tests {
     use super::*;
 
+    fn available(isa: u8) -> bool {
+        #[cfg(target_arch = "x86_64")]
+        match isa {
+            2 => std::is_x86_feature_detected!("avx512f"),
+            1 => std::is_x86_feature_detected!("avx2"),
+            _ => true,
+        }
+
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            isa == 0
+        }
+    }
+
     #[test]
     fn real_round_trip_scaling_and_strides() {
         unsafe {
@@ -555,6 +658,81 @@ mod tests {
         }
     }
 
+    #[test]
+    fn paired_stages_match_radix_two() {
+        let setup = Setup::new(14);
+        let mut seed = 19u32;
+        for lg in 0..=14 {
+            let n = 1usize << lg;
+            let input: Vec<_> = (0..2 * n)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 17;
+                    seed ^= seed << 5;
+                    seed as f64 / u32::MAX as f64 - 0.5
+                })
+                .collect();
+
+            for direction in [1, -1] {
+                let mut expected = input.clone();
+                let (r, im) = expected.split_at_mut(n);
+                for k in 0..n {
+                    let reversed = if lg == 0 {
+                        k
+                    } else {
+                        k.reverse_bits() >> (usize::BITS - lg)
+                    };
+                    r[k] = input[reversed];
+                    im[k] = input[n + reversed];
+                }
+
+                let sign = if direction == 1 { -1.0 } else { 1.0 };
+                let mut half = 1;
+                while half < n {
+                    for base in (0..n).step_by(2 * half) {
+                        for k in 0..half {
+                            let a = base + k;
+                            let b = a + half;
+                            let (tr, ti) = if half == 1 {
+                                (r[b], im[b])
+                            } else {
+                                let wr = setup.cosine[half - 1 + k];
+                                let wi = sign * setup.sine[half - 1 + k];
+                                (wr * r[b] - wi * im[b], wr * im[b] + wi * r[b])
+                            };
+                            r[b] = r[a] - tr;
+                            im[b] = im[a] - ti;
+                            r[a] += tr;
+                            im[a] += ti;
+                        }
+                    }
+                    half *= 2;
+                }
+
+                for isa in 0..=2 {
+                    if !available(isa) {
+                        continue;
+                    }
+                    let mut actual = input.clone();
+                    let (r, im) = actual.split_at_mut(n);
+                    let mut scratch = vec![0.0; 2 * n];
+                    match isa {
+                        2 => setup.complex::<2>(r, im, &mut scratch, lg as usize, direction),
+                        1 => setup.complex::<1>(r, im, &mut scratch, lg as usize, direction),
+                        _ => setup.complex::<0>(r, im, &mut scratch, lg as usize, direction),
+                    }
+                    assert!(
+                        expected
+                            .iter()
+                            .zip(&actual)
+                            .all(|(a, b)| a.to_bits() == b.to_bits()),
+                        "ISA {isa}, lg {lg}, direction {direction}"
+                    );
+                }
+            }
+        }
+    }
+
     #[cfg(target_arch = "x86_64")]
     #[test]
     fn instruction_sets_produce_identical_bits() {
@@ -574,12 +752,10 @@ mod tests {
 
                 let mut baseline = input.clone();
                 let (r, i) = baseline.split_at_mut(n / 2);
-                setup.real_kernel(r, i, lg, d);
+                setup.real_kernel::<0>(r, i, &mut vec![0.0; n], lg, d);
 
                 for isa in [1, 2] {
-                    if (isa == 1 && !std::is_x86_feature_detected!("avx2"))
-                        || (isa == 2 && !std::is_x86_feature_detected!("avx512f"))
-                    {
+                    if !available(isa) {
                         continue;
                     }
 
@@ -587,9 +763,9 @@ mod tests {
                     let (r, i) = candidate.split_at_mut(n / 2);
                     unsafe {
                         if isa == 1 {
-                            real_avx2(&setup, r, i, lg, d);
+                            real_avx2(&setup, r, i, &mut vec![0.0; n], lg, d);
                         } else {
-                            real_avx512(&setup, r, i, lg, d);
+                            real_avx512(&setup, r, i, &mut vec![0.0; n], lg, d);
                         }
                     }
 

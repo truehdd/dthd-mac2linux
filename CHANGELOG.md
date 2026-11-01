@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.1 — 2026-11-01
+
+- Optimize FFT stages and real transforms while preserving numerical results.
+
 ## v0.1.0 — 2026-11-01
 
 - Add the Rust builder and Darwin ABI adapters for `dee_dthd_encoder` on Linux.

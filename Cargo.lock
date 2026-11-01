@@ -180,7 +180,7 @@ dependencies = [
 
 [[package]]
 name = "dthd-mac2linux"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -195,7 +195,7 @@ dependencies = [
 
 [[package]]
 name = "dthd-darwin-abi"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
 ]
