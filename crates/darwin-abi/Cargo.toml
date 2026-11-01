@@ -1,6 +1,6 @@
 [package]
 name = "dthd-darwin-abi"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.97"
 description = "Darwin x86-64 ABI adapters used by dee_dthd_encoder on Linux"

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.1 — 2026-11-02
+
+- Use the selected workflow tag for manual releases; remove the duplicate tag input.
+
 ## v0.2.0 — 2026-11-02
 
 - Build the encoder and builder against a pinned glibc 2.34 sysroot, with the
