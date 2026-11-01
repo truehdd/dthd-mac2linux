@@ -230,6 +230,9 @@ fn compile(
         work,
         epoch: lock["source_date_epoch"].to_string(),
     };
+    let sysroot = work.join("sysroot");
+    crate::sysroot::extract(&options.sources, lock, &sysroot)?;
+
     let root = work.join("root");
     let src = work.join("src");
     let gen = work.join("gen");
@@ -329,6 +332,7 @@ fn compile(
                     "-DLIBCXX_BUILDING_LIBCXXABI",
                     "-D_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER",
                 ]);
+                cmd.extend(crate::sysroot::compile_flags(&sysroot));
                 cmd.push(format!("-frandom-seed={rel}"));
                 cmd.extend(prefix.clone());
                 cmd.extend([
@@ -441,6 +445,7 @@ fn compile(
         path(lib.join("libc++abi.a")),
         path(lib.join("libunwind.a")),
     ];
+    cmd.extend(crate::sysroot::link_flags(&sysroot));
     cmd.extend(args(&[
         "-static-libgcc",
         "-Wl,--exclude-libs,ALL",
@@ -497,22 +502,13 @@ fn shape(elf: &Path, lock: &Value) -> Result<Value> {
         "no Mach-O PT_LOAD"
     );
 
+    let glibc_max = check_glibc(
+        elf,
+        lock["shape"]["glibc_ceiling"]
+            .as_str()
+            .context("glibc ceiling")?,
+    )?;
     let dyns = output(Command::new("objdump").arg("-T").arg(elf))?;
-    let versions: std::collections::BTreeSet<Vec<u32>> =
-        regex::Regex::new(r"GLIBC_(\d+\.\d+(?:\.\d+)?)")?
-            .captures_iter(&dyns)
-            .map(|c| c[1].split('.').map(|s| s.parse().unwrap()).collect())
-            .collect();
-    let ceiling: Vec<u32> = lock["shape"]["glibc_ceiling"]
-        .as_str()
-        .context("glibc ceiling")?
-        .split('.')
-        .map(str::parse)
-        .collect::<std::result::Result<_, _>>()?;
-    if let Some(max) = versions.last() {
-        ensure!(max <= &ceiling, "GLIBC version exceeds ceiling: {max:?}");
-    }
-
     let runtime = regex::Regex::new(r"\s(_Z|__cxa|_Unwind)")?;
     ensure!(
         !dyns
@@ -521,13 +517,6 @@ fn shape(elf: &Path, lock: &Value) -> Result<Value> {
         "exports C++ runtime symbols"
     );
 
-    let glibc_max = versions.last().map(|version| {
-        version
-            .iter()
-            .map(u32::to_string)
-            .collect::<Vec<_>>()
-            .join(".")
-    });
     Ok(json!({ "needed": needed, "glibc_max": glibc_max }))
 }
 
@@ -554,12 +543,7 @@ pub fn run(mut options: Options) -> Result<Value> {
         options.allow_unpinned_payload,
     )?;
     crate::textmap::snapshot(&options.repo)?;
-    for (name, hash) in lock["sources"].as_object().context("source pins")? {
-        ensure!(
-            hash_file(&options.sources.join(name))? == *hash,
-            "source hash mismatch: {name}"
-        );
-    }
+    crate::sysroot::verify_sources(&options.sources, &lock)?;
 
     let tc = toolchain()?;
     let drift: BTreeMap<_, _> = tc
@@ -631,6 +615,7 @@ pub fn run(mut options: Options) -> Result<Value> {
         "payload_sha256": payload_sha256,
         "payload_matches_pin": payload_sha256 == pinned_payload,
         "sources": lock["sources"],
+        "sysroot": lock["sysroot"],
         "generated_inputs": lock["generated_inputs"],
         "toolchain": tc,
         "toolchain_drift": drift,
@@ -655,4 +640,92 @@ pub fn run(mut options: Options) -> Result<Value> {
     );
 
     Ok(report)
+}
+
+fn check_glibc(elf: &Path, ceiling: &str) -> Result<Option<String>> {
+    let symbols = output(Command::new("objdump").arg("-T").arg(elf))?;
+    let versions: std::collections::BTreeSet<Vec<u32>> =
+        regex::Regex::new(r"GLIBC_(\d+\.\d+(?:\.\d+)?)")?
+            .captures_iter(&symbols)
+            .map(|c| c[1].split('.').map(|s| s.parse().unwrap()).collect())
+            .collect();
+    let limit: Vec<u32> = ceiling
+        .split('.')
+        .map(str::parse)
+        .collect::<Result<_, _>>()?;
+
+    if let Some(max) = versions.last() {
+        ensure!(
+            max <= &limit,
+            "GLIBC version exceeds ceiling {ceiling}: {max:?}"
+        );
+    }
+
+    Ok(versions.last().map(|version| {
+        version
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(".")
+    }))
+}
+
+pub fn builder(repo: &Path, sources: &Path, out: &Path) -> Result<()> {
+    ensure!(
+        cfg!(all(target_os = "linux", target_arch = "x86_64")),
+        "builder release builds require Linux x86-64"
+    );
+
+    let repo = repo.canonicalize()?;
+    let sources = sources.canonicalize()?;
+    let lock = lock(&repo)?;
+    crate::sysroot::verify_sources(&sources, &lock)?;
+
+    let work = tempfile::Builder::new().prefix("dthd-builder-").tempdir()?;
+    let root = work.path().join("sysroot");
+    crate::sysroot::extract(&sources, &lock, &root)?;
+    let target = work.path().join("target");
+    let flags = crate::sysroot::link_flags(&root)
+        .into_iter()
+        .map(|flag| format!("-Clink-arg={flag}"))
+        .chain([format!("--remap-path-prefix={}=/dthd", repo.display())])
+        .collect::<Vec<_>>();
+
+    output(
+        rust_command("cargo")
+            .args([
+                "build",
+                "--locked",
+                "--release",
+                "--bin",
+                env!("CARGO_PKG_NAME"),
+                "--target",
+                "x86_64-unknown-linux-gnu",
+            ])
+            .current_dir(&repo)
+            .env("CARGO_TARGET_DIR", &target)
+            .env_remove("RUSTFLAGS")
+            .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f")),
+    )?;
+
+    let binary = target
+        .join("x86_64-unknown-linux-gnu/release")
+        .join(env!("CARGO_PKG_NAME"));
+    let glibc = check_glibc(
+        &binary,
+        lock["shape"]["glibc_ceiling"]
+            .as_str()
+            .context("glibc ceiling")?,
+    )?;
+    crate::sysroot::smoke_test(&root, &binary)?;
+
+    fs::create_dir_all(out)?;
+    let destination = out.join(env!("CARGO_PKG_NAME"));
+    fs::copy(&binary, &destination)?;
+    println!(
+        "{} (GLIBC {})",
+        destination.display(),
+        glibc.as_deref().unwrap_or("none")
+    );
+    Ok(())
 }

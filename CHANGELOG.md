@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 — 2026-11-02
 
+- Build the encoder and builder against a pinned glibc 2.34 sysroot, with the
+  x86-64-v2 minimum used by native Linux DEE 6.7.
 - Bundle the Unicode snapshot; builds no longer need a macOS generation step or
   `--textmap`. Update the snapshot header to name the Rust generator.
+- Add Linux builder CI and manual GitHub releases.
 
 ## v0.1.1 — 2026-11-01
 

@@ -34,6 +34,7 @@ __pycache__/
 *.id[012]
 *.whl
 *.deb
+*.rpm
 *.tar.*
 *.zip
 # Generated image and imports.

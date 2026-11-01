@@ -6,6 +6,7 @@ pub mod build;
 pub mod fetch;
 pub mod generate;
 pub mod image;
+mod sysroot;
 pub mod textmap;
 pub mod version;
 

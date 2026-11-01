@@ -179,8 +179,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "digest"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+dependencies = [
+ "block-buffer",
+ "crypto-common",
+]
+
+[[package]]
+name = "dthd-darwin-abi"
+version = "0.2.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "dthd-mac2linux"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -191,23 +208,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
-]
-
-[[package]]
-name = "dthd-darwin-abi"
-version = "0.1.1"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "digest"
-version = "0.10.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
-dependencies = [
- "block-buffer",
- "crypto-common",
 ]
 
 [[package]]

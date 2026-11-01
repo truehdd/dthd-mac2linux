@@ -10,21 +10,29 @@ Copyright 2026 Rainbaby. Code licensed under [Apache-2.0](LICENSE).
 ## Build
 
 Build on Ubuntu 24.04 x86-64 with Rust 1.97.1 from `rust-toolchain.toml`.
-The pinned toolchain uses GCC/G++ 13.3, binutils 2.42, glibc 2.39 and LLVM 18.1.3.
+The pinned toolchain uses GCC/G++ 13.3, binutils 2.42 and LLVM 18.1.3.
+Builds use a pinned glibc 2.34 sysroot.
 Exact versions and input hashes are in [config/inputs.lock](config/inputs.lock).
 Run commands from a Git checkout with its release tags.
 
 ```sh
-sudo apt-get install build-essential binutils git curl xz-utils ca-certificates
+sudo apt-get install build-essential binutils git curl xz-utils ca-certificates \
+  rpm2cpio cpio
 cargo run --locked --release -- fetch-sources inputs/sources
 cargo run --locked --release -- build \
   --payload /path/to/dee_dthd_encoder --sources inputs/sources --verify
 ```
 
+To build the Rust builder executable:
+
+```sh
+cargo run --locked --release -- build-builder --sources inputs/sources
+```
+
 `--verify` compares two isolated builds. `dist/` contains the executable,
 symbol binary, checksums and `BUILDINFO.json`. Place the executable beside
-Linux DEE's `libmediainfo.so.0` and `license.lic`. The executable requires glibc 2.39
-or newer.
+Linux DEE's `libmediainfo.so.0` and `license.lic`. Both binaries require glibc 2.34
+or newer and an x86-64-v2 CPU, matching native Linux DEE 6.7.
 
 Use `--allow-unpinned-payload` to try another encoder payload. It must pass
 `check-payload` screening; encoding still needs validation. Source archives remain

@@ -24,6 +24,13 @@ struct Cli {
 enum Command {
     /// Build the Linux encoder (Linux x86-64).
     Build(BuildArgs),
+    /// Build the Linux builder executable against the pinned glibc sysroot.
+    BuildBuilder {
+        #[arg(long)]
+        sources: PathBuf,
+        #[arg(long, default_value = "dist")]
+        out: PathBuf,
+    },
     /// Screen metadata without executing the input; exit 0=candidate, 1=reject, 2=review.
     CheckPayload {
         payload: PathBuf,
@@ -77,6 +84,9 @@ fn run(cli: Cli) -> Result<u8> {
                 allow_toolchain_drift: a.allow_toolchain_drift,
                 allow_unpinned_payload: a.allow_unpinned_payload,
             })?;
+        }
+        Command::BuildBuilder { sources, out } => {
+            build::builder(&cli.repo, &sources, &out)?;
         }
         Command::CheckPayload { payload, json } => {
             let lock = build::lock(&cli.repo)?;
