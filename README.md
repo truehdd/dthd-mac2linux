@@ -16,21 +16,9 @@ Run commands from a Git checkout with its release tags.
 
 ```sh
 sudo apt-get install build-essential binutils git curl xz-utils ca-certificates
-```
-
-Generate the Unicode snapshot on macOS 26.6.2, then copy it to Linux:
-
-```sh
-cargo run --locked --release -- textmap inputs/textmap.c.inc
-```
-
-On Linux:
-
-```sh
 cargo run --locked --release -- fetch-sources inputs/sources
 cargo run --locked --release -- build \
-  --payload /path/to/dee_dthd_encoder --sources inputs/sources \
-  --textmap /path/to/textmap.c.inc --verify
+  --payload /path/to/dee_dthd_encoder --sources inputs/sources --verify
 ```
 
 `--verify` compares two isolated builds. `dist/` contains the executable,
@@ -39,8 +27,9 @@ Linux DEE's `libmediainfo.so.0` and `license.lic`. The executable requires glibc
 or newer.
 
 Use `--allow-unpinned-payload` to try another encoder payload. It must pass
-`check-payload` screening; encoding still needs validation. Source archives and
-the Unicode snapshot remain pinned. `BUILDINFO.json` records the actual payload hash.
+`check-payload` screening; encoding still needs validation. Source archives remain
+pinned; the Unicode snapshot is bundled in `data/`.
+`BUILDINFO.json` records the actual payload hash.
 
 ## Validation
 

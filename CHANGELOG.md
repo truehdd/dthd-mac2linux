@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Bundle the Unicode snapshot; builds no longer need a macOS generation step or
+  `--textmap`. Update the snapshot header to name the Rust generator.
+
 ## v0.1.1 — 2026-11-01
 
 - Optimize FFT stages and real transforms while preserving numerical results.

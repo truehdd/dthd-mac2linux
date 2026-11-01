@@ -35,12 +35,10 @@ enum Command {
         payload: PathBuf,
         #[arg(long)]
         out: PathBuf,
-        #[arg(long)]
-        textmap: Option<PathBuf>,
     },
     /// Download and verify the pinned public source archives.
     FetchSources { directory: PathBuf },
-    /// Generate and verify the external Unicode snapshot (macOS).
+    /// Regenerate and verify the bundled Unicode snapshot (macOS).
     Textmap { output: PathBuf },
 }
 
@@ -50,8 +48,6 @@ struct BuildArgs {
     payload: PathBuf,
     #[arg(long)]
     sources: PathBuf,
-    #[arg(long)]
-    textmap: PathBuf,
     #[arg(long, default_value = "dist")]
     out: PathBuf,
     #[arg(long, default_value_t = 6)]
@@ -74,7 +70,6 @@ fn run(cli: Cli) -> Result<u8> {
                 repo: cli.repo,
                 payload: a.payload,
                 sources: a.sources,
-                textmap: a.textmap,
                 out: a.out,
                 jobs: a.jobs,
                 verify: a.verify,
@@ -123,20 +118,15 @@ fn run(cli: Cli) -> Result<u8> {
                 _ => 1,
             });
         }
-        Command::Prepare {
-            payload,
-            out,
-            textmap,
-        } => {
+        Command::Prepare { payload, out } => {
             let image = generate::prepare(&payload, &out)?;
             generate::imports(
                 &image,
                 &fs::read_to_string(cli.repo.join("crates/darwin-abi/src/platform/hooks.rs"))?,
                 &out,
             )?;
-            if let Some(input) = textmap {
-                generate::textmap(&input, &out.join("textmap.rs"))?;
-            }
+            let input = dthd_mac2linux::textmap::snapshot(&cli.repo)?;
+            generate::textmap(&input, &out.join("textmap.rs"))?;
             println!(
                 "{} bindings, {} unwind records",
                 image.bindings.len(),

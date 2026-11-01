@@ -1,5 +1,5 @@
 {
-  "comment": "Build inputs for the macOS x86-64 dee_dthd_encoder payload. The payload and Unicode snapshot remain external.",
+  "comment": "Build inputs for the macOS x86-64 dee_dthd_encoder payload. The payload remains external; the Unicode snapshot is bundled in data/.",
   "payload": {
     "name": "dee_dthd_encoder (DEE 6.7.0+8e353f99, macOS x86-64)",
     "sha256": "cb27d1e39bc4940b26db6139d064408919f3795ed0385f1ee5df036cc0385dba"
@@ -34,7 +34,7 @@
   },
   "source_date_epoch": 1793059200,
   "generated_inputs": {
-    "textmap.c.inc": "e662a58410b5ed7b010bdd0a1c667fb4b98f9c07c166c7e67183701f6370b45f"
+    "textmap.c.inc": "fbfa003523478eec3dd781ac33dcc0a5c197aa3397cbbcbdc40aa1e12b1e3840"
   },
   "source_urls": {
     "libcxx-18.1.3.src.tar.xz": "https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.3/libcxx-18.1.3.src.tar.xz",

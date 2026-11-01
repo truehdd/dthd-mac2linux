@@ -16,7 +16,6 @@ pub struct Options {
     pub repo: PathBuf,
     pub payload: PathBuf,
     pub sources: PathBuf,
-    pub textmap: PathBuf,
     pub out: PathBuf,
     pub jobs: usize,
     pub verify: bool,
@@ -271,7 +270,10 @@ fn compile(
         &fs::read_to_string(options.repo.join("crates/darwin-abi/src/platform/hooks.rs"))?,
         &gen,
     )?;
-    crate::generate::textmap(&options.textmap, &gen.join("textmap.rs"))?;
+    crate::generate::textmap(
+        &options.repo.join("data/textmap.c.inc"),
+        &gen.join("textmap.rs"),
+    )?;
 
     let llvm_inc = root.join("usr/lib/llvm-18/include/c++/v1");
     let cxx = src.join("libcxx-18.1.3.src");
@@ -540,7 +542,6 @@ pub fn run(mut options: Options) -> Result<Value> {
     let (version, date) = crate::version::describe(&options.repo)?;
     options.payload = options.payload.canonicalize()?;
     options.sources = options.sources.canonicalize()?;
-    options.textmap = options.textmap.canonicalize()?;
 
     let lock = lock(&options.repo)?;
     let capabilities =
@@ -552,10 +553,7 @@ pub fn run(mut options: Options) -> Result<Value> {
         &capabilities,
         options.allow_unpinned_payload,
     )?;
-    ensure!(
-        hash_file(&options.textmap)? == lock["generated_inputs"]["textmap.c.inc"],
-        "Unicode table does not match config/inputs.lock"
-    );
+    crate::textmap::snapshot(&options.repo)?;
     for (name, hash) in lock["sources"].as_object().context("source pins")? {
         ensure!(
             hash_file(&options.sources.join(name))? == *hash,

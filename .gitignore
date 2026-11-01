@@ -36,8 +36,7 @@ __pycache__/
 *.deb
 *.tar.*
 *.zip
-# Generated image, imports, and Unicode metadata.
-textmap.c.inc
+# Generated image and imports.
 manifest.json
 imports.S
 macho.S

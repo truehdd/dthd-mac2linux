@@ -1,4 +1,4 @@
-//! CoreFoundation/CoreServices subset, with the external macOS Unicode snapshot.
+//! CoreFoundation/CoreServices subset, using the bundled macOS Unicode snapshot.
 
 use super::{bytes, die, errno_get, errno_set, missing, units, EXECUTABLE};
 use libc::*;
