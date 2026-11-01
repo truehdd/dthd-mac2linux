@@ -1,0 +1,18 @@
+[package]
+name = "dthd-darwin-abi"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.97"
+description = "Darwin x86-64 ABI adapters used by dee_dthd_encoder on Linux"
+authors = ["Rainbaby"]
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+
+[features]
+embedded = []

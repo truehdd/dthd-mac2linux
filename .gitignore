@@ -1,0 +1,46 @@
+# All build products, cached inputs, fixtures, and local installations.
+/build/
+/dist/
+/inputs/
+/deps/
+/work/
+/install/
+/.venv/
+/.venv-*/
+__pycache__/
+.ruff_cache/
+*.py[cod]
+.DS_Store
+._*
+# Media, binary inputs and derived outputs, regardless of location.
+*.lic
+*.macho
+*.exe
+*.dll
+*.so
+*.so.*
+*.dylib
+*.a
+*.o
+*.sym
+*.thd
+*.wav
+*.pcm
+*.atmos
+*.atmos.audio
+*.atmos.metadata
+*.atmos.dbmd
+*.i64
+*.id[012]
+*.whl
+*.deb
+*.tar.*
+*.zip
+# Generated image, imports, and Unicode metadata.
+textmap.c.inc
+manifest.json
+imports.S
+macho.S
+ldflags
+dee_dthd_encoder
+/target/
