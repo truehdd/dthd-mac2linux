@@ -98,3 +98,25 @@ positions. The input has 32,579 events.
 
 Input and normal re-encoding, 97.520–98.000 s at 0.1× speed.
 DAMF origin: bottom centre.
+
+## Benchmark
+
+Full Sol Levante with normal preprocessing: Linux port v0.1.1 and Windows DEE 6.7.
+Xeon Platinum 8480+, affinity set to 32 logical CPUs. Times are the median
+(minimum–maximum) of three runs after a warm-up. The two hosts are measured
+separately. Temporary files were in RAM except on native Windows, which used its
+virtual disk.
+
+### Ubuntu 24.04 container
+
+| Encoder | Execution | Time (s) |
+|---|---|---:|
+| Linux port | Native Linux | 100.9 (100.5–101.0) |
+| Windows DEE 6.7 | Wine 9.0 | 186.1 (185.2–186.9) |
+
+### Windows 11 VM
+
+| Encoder | Execution | Time (s) |
+|---|---|---:|
+| Linux port | Ubuntu 24.04 in WSL2 | 201.0 (162.0–205.9) |
+| Windows DEE 6.7 | Native Windows | 212.6 (203.8–223.6) |
