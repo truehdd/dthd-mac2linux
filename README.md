@@ -65,11 +65,12 @@ Audio differences are in 24-bit PCM units. Means use all samples and channels.
 ### Re-encoding decoded input
 
 All three encoders use the same decoded Sol Levante input: LFE plus 15 objects,
-with metadata aligned to frames. An unpublished test shim turns off clustering,
-smoothing and noise shaping, and corrects PCM scaling and timing. We compare the
-output with the input, using the same channel mapping for audio and OAMD IDs.
+with metadata aligned to frames. [dee-shim](https://github.com/truehdd/dee-shim)
+(`dthd_encoder --oamd-as-is on --as-is on`) turns off clustering, smoothing and
+noise shaping, and corrects PCM scaling and timing. We compare the output with
+the input, using the same channel mapping for audio and OAMD IDs.
 
-| Difference from input | Linux / macOS / Windows | All three, with shim |
+| Difference from input | Linux / macOS / Windows | All three, with dee-shim |
 |---|---:|---:|
 | PCM max absolute | 143040 | 0 |
 | PCM mean absolute | 4.674614 | 0 |
